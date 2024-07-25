@@ -1,0 +1,51 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  username  String   @id @unique
+  is_online Boolean  @default(false)
+  last_ping DateTime @default(now())
+
+  userChannels UserChannel[]
+  messages     Message[]
+}
+
+model Room {
+  name String      @id @unique
+  type ChannelType
+
+  userChannels UserChannel[]
+  messages     Message[]
+}
+
+model UserChannel {
+  username String
+  room     String
+
+  user    User @relation(fields: [username], references: [username])
+  channel Room @relation(fields: [room], references: [name])
+
+  @@id([username, room])
+}
+
+model Message {
+  id         BigInt   @id @default(autoincrement())
+  from_user  String
+  room       String
+  content    String
+  created_at DateTime @default(now())
+
+  user    User @relation(fields: [from_user], references: [username])
+  channel Room @relation(fields: [room], references: [name])
+}
+
+enum ChannelType {
+  PUBLIC
+  PRIVATE
+}

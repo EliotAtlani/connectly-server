@@ -4,11 +4,13 @@ datasource db {
 }
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-arm64-openssl-3.0.x"]
 }
 
 model User {
-  username  String   @id @unique
+  id        String   @id @unique
+  username  String
   is_online Boolean  @default(false)
   last_ping DateTime @default(now())
 
@@ -25,13 +27,13 @@ model Room {
 }
 
 model UserChannel {
-  username String
-  room     String
+  user_id String
+  room    String
 
-  user    User @relation(fields: [username], references: [username])
+  user    User @relation(fields: [user_id], references: [id])
   channel Room @relation(fields: [room], references: [name])
 
-  @@id([username, room])
+  @@id([user_id, room])
 }
 
 model Message {
@@ -41,7 +43,7 @@ model Message {
   content    String
   created_at DateTime @default(now())
 
-  user    User @relation(fields: [from_user], references: [username])
+  user    User @relation(fields: [from_user], references: [id])
   channel Room @relation(fields: [room], references: [name])
 }
 

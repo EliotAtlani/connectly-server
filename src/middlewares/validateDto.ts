@@ -4,7 +4,6 @@ import { Request, Response, NextFunction } from "express";
 
 export function validateDto(dtoClass: new () => any) {
   return async function (req: Request, res: Response, next: NextFunction) {
-    console.log(req.body);
     const dtoObject = plainToInstance(dtoClass, req.body);
     if (!dtoObject) {
       return res.status(400).json({ error: "Body is null" });

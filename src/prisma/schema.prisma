@@ -5,49 +5,92 @@ datasource db {
 
 generator client {
   provider      = "prisma-client-js"
-  binaryTargets = ["native", "linux-musl-arm64-openssl-3.0.x"]
+  binaryTargets = ["native", "linux-musl-arm64-openssl-3.0.x", "linux-musl-openssl-3.0.x"]
 }
 
 model User {
-  id        String   @id @unique
-  username  String
-  is_online Boolean  @default(false)
-  last_ping DateTime @default(now())
+  userId      String   @id @unique
+  username    String   @unique
+  isOnBoarded Boolean  @default(false)
+  is_online   Boolean  @default(false)
+  last_ping   DateTime @default(now())
+  avatar      Int      @default(0)
 
-  userChannels UserChannel[]
+  sentFriendRequests     FriendRequest[] @relation("Sender")
+  receivedFriendRequests FriendRequest[] @relation("Receiver")
+  friendsAsUser1         Friendship[]    @relation("User1")
+  friendsAsUser2         Friendship[]    @relation("User2")
+
+  participatingIn ConversationUser[]
+  sentMessages    Message[]          @relation("Sender")
+}
+
+model Conversation {
+  id        String           @id @default(uuid())
+  name      String? // Optional name for group conversations
+  type      ConversationType @default(PRIVATE)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  participants ConversationUser[]
   messages     Message[]
 }
 
-model Room {
-  name String      @id @unique
-  type ChannelType
+model ConversationUser {
+  id             String   @id @default(uuid())
+  userId         String
+  conversationId String
+  joinedAt       DateTime @default(now())
 
-  userChannels UserChannel[]
-  messages     Message[]
-}
+  user         User         @relation(fields: [userId], references: [userId])
+  conversation Conversation @relation(fields: [conversationId], references: [id])
 
-model UserChannel {
-  user_id String
-  room    String
-
-  user    User @relation(fields: [user_id], references: [id])
-  channel Room @relation(fields: [room], references: [name])
-
-  @@id([user_id, room])
+  @@unique([userId, conversationId])
 }
 
 model Message {
-  id         BigInt   @id @default(autoincrement())
-  from_user  String
-  room       String
-  content    String
-  created_at DateTime @default(now())
+  id             String   @id @default(uuid())
+  conversationId String
+  senderId       String
+  content        String
+  createdAt      DateTime @default(now())
 
-  user    User @relation(fields: [from_user], references: [id])
-  channel Room @relation(fields: [room], references: [name])
+  conversation Conversation @relation(fields: [conversationId], references: [id])
+  sender       User         @relation("Sender", fields: [senderId], references: [userId])
 }
 
-enum ChannelType {
-  PUBLIC
+model FriendRequest {
+  id         Int           @id @default(autoincrement())
+  senderId   String
+  receiverId String
+  status     RequestStatus @default(PENDING)
+  createdAt  DateTime      @default(now())
+
+  sender   User @relation("Sender", fields: [senderId], references: [userId])
+  receiver User @relation("Receiver", fields: [receiverId], references: [userId])
+
+  @@unique([senderId, receiverId])
+}
+
+model Friendship {
+  id        Int      @id @default(autoincrement())
+  user1Id   String
+  user2Id   String
+  createdAt DateTime @default(now())
+
+  user1 User @relation("User1", fields: [user1Id], references: [userId])
+  user2 User @relation("User2", fields: [user2Id], references: [userId])
+
+  @@unique([user1Id, user2Id])
+}
+
+enum ConversationType {
   PRIVATE
+  GROUP
+}
+
+enum RequestStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
 }

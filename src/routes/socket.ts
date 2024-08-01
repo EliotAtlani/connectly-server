@@ -6,6 +6,7 @@ import {
   handleTyping,
   handleStopTyping,
   handleRefresh,
+  handleCreateChat,
 } from "../controllers/messageController";
 import { socketAuth } from "../middlewares/socketAuth";
 
@@ -14,6 +15,10 @@ export const setupSocket = (io: Server) => {
 
   io.on("connection", (socket) => {
     console.log("A user connected");
+
+    socket.on("create_chat", (data) => {
+      handleCreateChat(socket, data);
+    });
 
     socket.on("join_room", (data) => handleJoinRoom(socket, data));
     socket.on("send_message", (data) => handleSendMessage(io, data));

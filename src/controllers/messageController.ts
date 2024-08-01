@@ -1,9 +1,10 @@
 import { Socket, Server } from "socket.io";
 import { MessageProps } from "../types";
 import {
+  createChat,
   createMessage,
   getRoomMessages,
-  joinRoom,
+  RefreshConversation,
 } from "../services/messageService";
 
 export const handleJoinRoom = async (
@@ -13,9 +14,6 @@ export const handleJoinRoom = async (
   const { from_user, room } = data;
   try {
     console.log(`${from_user} joined room ${room}`);
-
-    await joinRoom(from_user, room);
-
     socket.join(room);
 
     const messages = await getRoomMessages(room);
@@ -27,13 +25,23 @@ export const handleJoinRoom = async (
 };
 
 export const handleSendMessage = async (io: Server, data: MessageProps) => {
-  const { content, from_user, room } = data;
+  const { content, from_user_id, chatId } = data;
   try {
-    io.in(room).emit("receive_message", data);
-    await createMessage(from_user, room, content);
+    io.in(chatId).emit("receive_message", {
+      content,
+      senderId: from_user_id,
+      createdAt: new Date().toISOString(),
+    });
+    io.emit("refresh_conversation", {
+      chatId,
+      content,
+      date: new Date().toISOString(),
+    });
+    await createMessage(from_user_id, content, chatId);
+    await RefreshConversation(chatId);
   } catch (error) {
     console.error(`Error in handleSendMessage: ${error}`);
-    io.in(room).emit("error", { message: "Failed to send message" });
+    io.in(chatId).emit("error", { message: "Failed to send message" });
   }
 };
 
@@ -74,5 +82,18 @@ export const handleRefresh = async (
   } catch (error) {
     console.error(`Error in handleRefresh: ${error}`);
     socket.emit("error", { message: "Failed to refresh messages" });
+  }
+};
+
+export const handleCreateChat = async (
+  socket: Socket,
+  data: { usersId: string[] }
+) => {
+  try {
+    const chat = await createChat(data);
+    socket.emit("chat_created", chat);
+  } catch (error) {
+    console.error(`Error in handleCreateChat: ${error}`);
+    socket.emit("error", { message: "Failed to create chat" });
   }
 };

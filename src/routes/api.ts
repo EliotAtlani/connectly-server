@@ -1,9 +1,17 @@
 import express from "express";
 import { prisma } from "../config/database";
 import { validateDto } from "../middlewares/validateDto";
-import { CreateUserDto } from "../dto/user.dto";
+import {
+  AcceptFriendDto,
+  AddFriendDto,
+  CreateUserDto,
+  OnBoardUserDto,
+} from "../dto/user.dto";
+import { setupAuth } from "../config/auth";
+import { UserController } from "../controllers/userController";
 
 const router = express.Router();
+const checkJwt = setupAuth(express());
 
 router.get("/public", (req, res) => {
   res.json({
@@ -19,21 +27,58 @@ router.get("/private", (req, res) => {
   });
 });
 
-router.post("/create-user", validateDto(CreateUserDto), async (req, res) => {
-  try {
-    const { id, username } = req.body;
+///////////
+///USERS///
+///////////
 
-    const user = await prisma.user.create({
-      data: {
-        id,
-        username,
-      },
-    });
+router.post(
+  "/users/create-user",
+  validateDto(CreateUserDto),
+  UserController.createUser
+);
 
-    res.status(201).json({ message: "User created successfully", user });
-  } catch (error) {
-    console.error("Error creating user:", error);
-    res.status(500).json({ message: "Error creating user" });
-  }
-});
+router.post(
+  "/users/onboard-user",
+  checkJwt,
+  validateDto(OnBoardUserDto),
+  UserController.onboardUser
+);
+
+router.post(
+  "/users/add-friend",
+  checkJwt,
+  validateDto(AddFriendDto),
+  UserController.addFriend
+);
+
+router.post(
+  "/users/accept-friend",
+  checkJwt,
+  validateDto(AcceptFriendDto),
+  UserController.acceptFriendRequest
+);
+
+router.get(
+  "/users/friends-request/:userId",
+  checkJwt,
+  UserController.getFriendsRequest
+);
+
+router.get(
+  "/users/friends-list/:userId",
+  checkJwt,
+  UserController.getFriendsList
+);
+
+///////////
+// CHATS //
+///////////
+
+router.get("/chat/:chatId/:userId", checkJwt, UserController.getChat);
+
+router.get(
+  "/chat-conversations/:userId",
+  checkJwt,
+  UserController.getConversations
+);
 export default router;

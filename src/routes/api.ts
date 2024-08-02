@@ -70,6 +70,11 @@ router.get(
   UserController.getFriendsList
 );
 
+router.get(
+  "/users/friends-request-number/:userId",
+  UserController.getFriendsRequestNumber
+);
+
 ///////////
 // CHATS //
 ///////////

@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { PrismaClient, User, FriendRequest } from "@prisma/client";
+import { getUnreadMessageCount } from "../services/messageService";
 
 const prisma = new PrismaClient();
 
@@ -68,8 +69,6 @@ export class UserController {
         userId,
         friendUsername,
       }: { userId: string; friendUsername: string } = req.body;
-
-      console.log(userId, friendUsername);
 
       // Find the user by username
       const user: User | null = await prisma.user.findUnique({
@@ -165,6 +164,27 @@ export class UserController {
     }
   }
 
+  static async getFriendsRequestNumber(
+    req: Request,
+    res: Response
+  ): Promise<void> {
+    try {
+      const { userId } = req.params;
+
+      const friendsRequestNumber = await prisma.friendRequest.count({
+        where: {
+          receiverId: userId,
+          status: "PENDING",
+        },
+      });
+
+      res.status(200).json(friendsRequestNumber);
+    } catch (error) {
+      console.error("Error getting friends request number:", error);
+      res.status(500).json({ message: "Error getting friends request number" });
+    }
+  }
+
   static async getFriendsList(req: Request, res: Response): Promise<void> {
     try {
       const { userId } = req.params;
@@ -196,12 +216,14 @@ export class UserController {
             userId: friend.user2Id,
             username: friend.user2.username,
             avatar: friend.user2.avatar,
+            createdAt: friend.createdAt,
           };
         } else {
           return {
             userId: friend.user1Id,
             username: friend.user1.username,
             avatar: friend.user1.avatar,
+            createdAt: friend.createdAt,
           };
         }
       });
@@ -233,7 +255,6 @@ export class UserController {
               },
             },
           },
-          messages: true,
         },
       });
 
@@ -252,9 +273,11 @@ export class UserController {
         avatar: user?.user.avatar,
       };
 
-      res
-        .status(200)
-        .json({ data, id: conversation.id, messages: conversation.messages });
+      res.status(200).json({
+        data,
+        id: conversation.id,
+        lastMessageReadId: user?.lastReadMessageId,
+      });
     } catch (error) {
       console.error("Error getting chat:", error);
       res.status(500).json({ message: "Error getting chat" });
@@ -265,7 +288,6 @@ export class UserController {
     try {
       const { userId } = req.params;
 
-      console.log(userId);
       const conversations = await prisma.conversation.findMany({
         where: {
           participants: {
@@ -306,12 +328,18 @@ export class UserController {
           (participant) => participant.userId !== userId
         );
 
+        const messageUnReadCount = await getUnreadMessageCount(
+          userId,
+          conversation.id
+        );
+
         const data = {
           chatId: conversation.id,
           name: user?.user.username,
           avatar: user?.user.avatar,
-          lastMessage: conversation.messages[0].content,
-          lastMessageDate: conversation.messages[0].createdAt,
+          lastMessage: conversation.messages[0]?.content,
+          lastMessageDate: conversation.messages[0]?.createdAt,
+          unreadMessageCount: messageUnReadCount,
         };
 
         finalArray.push(data);

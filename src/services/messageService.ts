@@ -1,30 +1,5 @@
 import { prisma } from "../config/database";
 
-export const joinRoom = async (from_user: string, room: string) => {
-  // let existingRoom = await prisma.room.findFirst({
-  //   where: { name: room },
-  // });
-  // console.log(existingRoom);
-  // if (!existingRoom) {
-  //   existingRoom = await prisma.room.create({
-  //     data: { name: room, type: "PUBLIC" },
-  //   });
-  // }
-  // let existingUserChannel = await prisma.userChannel.findFirst({
-  //   where: { user_id: from_user, room: room },
-  // });
-  // if (!existingUserChannel) {
-  //   existingUserChannel = await prisma.userChannel.create({
-  //     data: { user_id: from_user, room: room },
-  //   });
-  // await createMessage(
-  //   "System",
-  //   room,
-  //   `${from_user} has joined the chat room`
-  // );
-  // }
-};
-
 export const getRoomMessages = async (room: string) => {
   const messages = await prisma.message.findMany({
     where: { conversationId: room },
@@ -105,4 +80,148 @@ export const createChat = async (data: { usersId: string[] }) => {
   );
 
   return conversation;
+};
+
+export async function markMessageAsRead(userId: string, messageId: string) {
+  const message = await prisma.message.findUnique({
+    where: { id: messageId },
+    include: { conversation: true },
+  });
+
+  if (!message) {
+    throw new Error("Message not found");
+  }
+
+  await prisma.conversationUser.update({
+    where: {
+      userId_conversationId: {
+        userId: userId,
+        conversationId: message.conversationId,
+      },
+    },
+    data: {
+      lastReadMessageId: messageId,
+    },
+  });
+}
+
+export async function getUnreadMessageCount(
+  userId: string,
+  conversationId: string
+) {
+  const conversationUser = await prisma.conversationUser.findUnique({
+    where: {
+      userId_conversationId: {
+        userId: userId,
+        conversationId: conversationId,
+      },
+    },
+    include: {
+      lastReadMessage: true,
+    },
+  });
+
+  if (!conversationUser) {
+    throw new Error("User is not part of this conversation");
+  }
+
+  const unreadCount = await prisma.message.count({
+    where: {
+      conversationId: conversationId,
+      createdAt: {
+        gt:
+          conversationUser.lastReadMessage?.createdAt ??
+          conversationUser.joinedAt,
+      },
+      NOT: {
+        senderId: userId,
+      },
+    },
+  });
+
+  return unreadCount;
+}
+
+export async function updateIsOnline(userId: string, isOnline: boolean) {
+  try {
+    await prisma.user.update({
+      where: { userId: userId },
+      data: { is_online: isOnline },
+    });
+  } catch (error) {
+    console.error(`Error updating is online for user ${userId}:`, error);
+  }
+}
+export async function updateUserLastPing(userId: string) {
+  try {
+    await prisma.user.update({
+      where: { userId: userId },
+      data: { last_ping: new Date() },
+    });
+  } catch (error) {
+    console.error(`Error updating last ping for user ${userId}:`, error);
+  }
+}
+
+export const getActivityUser = async (room: string, from_user: string) => {
+  try {
+    const otherParticipant = await prisma.conversationUser.findFirst({
+      where: {
+        conversationId: room,
+        userId: {
+          not: from_user,
+        },
+      },
+      select: {
+        user: {
+          select: {
+            last_ping: true,
+            is_online: true,
+          },
+        },
+      },
+    });
+
+    return {
+      isOnline: otherParticipant?.user.is_online,
+      lastPing: otherParticipant?.user.last_ping,
+    };
+  } catch (error) {
+    console.error(`Error in getLastPingUser: ${error}`);
+  }
+};
+
+export const getOtherUser = async (chatId: string, from_user: string) => {
+  try {
+    const conversation = await prisma.conversation.findFirst({
+      where: {
+        id: chatId,
+      },
+      include: {
+        participants: {
+          include: {
+            user: {
+              select: {
+                userId: true,
+                username: true,
+                avatar: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!conversation) {
+      throw new Error("Conversation not found");
+    }
+
+    const otherUser = conversation.participants.find(
+      (participant) => participant.userId !== from_user
+    );
+
+    return otherUser?.userId;
+  } catch (error) {
+    console.error(`Error in getOtherUser: ${error}`);
+  }
 };

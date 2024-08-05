@@ -6,6 +6,9 @@ import {
   AddFriendDto,
   CreateUserDto,
   OnBoardUserDto,
+  PatchChatSettings,
+  PatchUserSettings,
+  PostDownloadImage,
 } from "../dto/user.dto";
 import { setupAuth } from "../config/auth";
 import { UserController } from "../controllers/userController";
@@ -44,6 +47,12 @@ router.post(
   UserController.onboardUser
 );
 
+router.patch(
+  "/users/:userId",
+  validateDto(PatchUserSettings),
+  checkJwt,
+  UserController.UpdateUserSettings
+);
 router.post(
   "/users/add-friend",
   checkJwt,
@@ -56,6 +65,13 @@ router.post(
   checkJwt,
   validateDto(AcceptFriendDto),
   UserController.acceptFriendRequest
+);
+
+router.post(
+  "/users/refuse-friend",
+  checkJwt,
+  validateDto(AcceptFriendDto),
+  UserController.refuseFriendRequest
 );
 
 router.get(
@@ -75,6 +91,8 @@ router.get(
   UserController.getFriendsRequestNumber
 );
 
+router.get("/users/friend-info/:userId", UserController.getFriendInfo);
+
 ///////////
 // CHATS //
 ///////////
@@ -85,5 +103,32 @@ router.get(
   "/chat-conversations/:userId",
   checkJwt,
   UserController.getConversations
+);
+
+router.get(
+  "/chat-messages/:chatId/messages",
+  checkJwt,
+  UserController.getMessages
+);
+
+/////////////////
+//SETTINGS CHAT//
+/////////////////
+
+router.patch(
+  "/chat-settings/:chatId",
+  checkJwt,
+  validateDto(PatchChatSettings),
+  UserController.updateChatSettings
+);
+
+///////////////////
+//DOWNLOAD FILES///
+///////////////////
+
+router.post(
+  "/upload-image/download",
+  validateDto(PostDownloadImage),
+  UserController.downloadImage
 );
 export default router;

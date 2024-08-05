@@ -22,6 +22,11 @@ export class OnBoardUserDto {
   image!: number;
 }
 
+export class PatchUserSettings {
+  @IsNumber()
+  avatar!: number;
+}
+
 export class AddFriendDto {
   @IsString()
   userId!: string;
@@ -36,4 +41,14 @@ export class AcceptFriendDto {
 
   @IsString()
   senderId!: string;
+}
+
+export class PatchChatSettings {
+  @IsNumber()
+  backgroundImage!: number;
+}
+
+export class PostDownloadImage {
+  @IsString()
+  url!: string;
 }

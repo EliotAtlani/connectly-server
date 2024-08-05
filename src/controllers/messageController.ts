@@ -9,6 +9,7 @@ import {
   markMessageAsRead,
   RefreshConversation,
 } from "../services/messageService";
+import { uploadToS3 } from "../services/imgageUploadService";
 
 export const handleJoinRoom = async (
   socket: Socket,
@@ -33,8 +34,8 @@ export const handleJoinRoom = async (
     socket.emit("activity_user", activityUser);
 
     // Find the last message sent by the other user and mark it as read
-    if (messages.length > 0) {
-      const lastMessageFromOtherUser = messages
+    if (messages.messages.length > 0) {
+      const lastMessageFromOtherUser = messages.messages
         .slice()
         .reverse()
         .find((message) => message.senderId !== from_user);
@@ -57,7 +58,6 @@ export const handleSendMessage = async (io: Server, data: MessageProps) => {
   const { content, from_user_id, chatId } = data;
   try {
     const socketsInRoom = io.sockets.adapter.rooms.get(chatId) || new Set();
-    console.log(`socketsInRoom: ${JSON.stringify(socketsInRoom)}`);
     const isOtherInRoom = socketsInRoom.size > 1;
     const message = await createMessage(from_user_id, content, chatId);
 
@@ -66,6 +66,7 @@ export const handleSendMessage = async (io: Server, data: MessageProps) => {
       content,
       senderId: from_user_id,
       createdAt: new Date().toISOString(),
+      type: message.type,
       chatId: chatId,
     });
 
@@ -86,6 +87,7 @@ export const handleSendMessage = async (io: Server, data: MessageProps) => {
       date: new Date().toISOString(),
       from_user_id,
       is_other_in_room: isOtherInRoom,
+      type: message.type,
     });
     await RefreshConversation(chatId);
   } catch (error) {
@@ -155,5 +157,65 @@ export const handleCreateChat = async (
   } catch (error) {
     console.error(`Error in handleCreateChat: ${error}`);
     socket.emit("error", { message: "Failed to create chat" });
+  }
+};
+
+export const handleUploadImage = async (
+  io: Server,
+  socket: Socket,
+  data: MessageProps
+) => {
+  console.log(data);
+  const { from_user_id, chatId, file } = data;
+
+  if (!file) {
+    io.emit("error", { message: "No file found" });
+    return;
+  }
+
+  try {
+    const socketsInRoom = io.sockets.adapter.rooms.get(chatId) || new Set();
+    const isOtherInRoom = socketsInRoom.size > 1;
+    // Generate a unique file name
+    const fileName = `uploads/${Date.now()}-${Math.random()
+      .toString(36)
+      .substring(7)}.jpg`;
+
+    const url = await uploadToS3(file, fileName);
+    console.log(url);
+
+    const message = await createMessage(from_user_id, url, chatId, "IMAGE");
+
+    socket.broadcast.to(chatId).emit("receive_message", {
+      id: message.id,
+      content: url,
+      type: message.type,
+      senderId: from_user_id,
+      createdAt: new Date().toISOString(),
+      chatId: chatId,
+    });
+
+    if (isOtherInRoom) {
+      const otherUserId = await getOtherUser(chatId, from_user_id);
+      if (otherUserId) {
+        io.in(chatId).emit("mark_as_read", {
+          message_id: message.id,
+          userId: from_user_id,
+        });
+        await markMessageAsRead(otherUserId, message.id);
+      }
+    }
+
+    io.emit("refresh_conversation", {
+      chatId,
+      content: "Send an image",
+      date: new Date().toISOString(),
+      from_user_id,
+      is_other_in_room: isOtherInRoom,
+    });
+    await RefreshConversation(chatId);
+  } catch (error) {
+    console.error(`Error in handleUploadImage: ${error}`);
+    io.in(chatId).emit("error", { message: "Failed to send message" });
   }
 };

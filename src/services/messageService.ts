@@ -1,25 +1,47 @@
 import { prisma } from "../config/database";
 
-export const getRoomMessages = async (room: string) => {
+export const getRoomMessages = async (
+  room: string,
+  page = 1,
+  pageSize = 100
+) => {
+  // Calculate the offset
+  const skip = (page - 1) * pageSize;
+
+  // Fetch paginated messages
   const messages = await prisma.message.findMany({
     where: { conversationId: room },
+    orderBy: { createdAt: "desc" },
+    take: pageSize,
+    skip: skip,
   });
-  return messages.map((msg) => ({
-    ...msg,
-    id: msg.id.toString(),
-  }));
-};
+  // Reverse the messages to maintain chronological order
+  messages.reverse();
 
+  // Fetch the total count of messages
+  const totalMessages = await prisma.message.count({
+    where: { conversationId: room },
+  });
+
+  return {
+    messages,
+    totalMessages,
+    currentPage: page,
+    totalPages: Math.ceil(totalMessages / pageSize),
+  };
+};
 export const createMessage = async (
   from_user_id: string,
   content: string,
-  chatId: string
+  chatId: string,
+  type: "TEXT" | "IMAGE" = "TEXT"
 ) => {
   return await prisma.message.create({
     data: {
       conversationId: chatId,
       senderId: from_user_id,
       content: content,
+      type: type,
     },
   });
 };

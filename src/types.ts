@@ -3,4 +3,5 @@ export interface MessageProps {
   from_user_id: string;
   chatId: string;
   __createdtime__: string;
+  file?: Buffer;
 }

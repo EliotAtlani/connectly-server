@@ -1,6 +1,11 @@
 import { Request, Response } from "express";
 import { PrismaClient, User, FriendRequest } from "@prisma/client";
-import { getUnreadMessageCount } from "../services/messageService";
+import {
+  getRoomMessages,
+  getUnreadMessageCount,
+} from "../services/messageService";
+import { PatchUserSettings } from "../dto/user.dto";
+import { getSignedUrlImage } from "../services/imgageUploadService";
 
 const prisma = new PrismaClient();
 
@@ -47,6 +52,16 @@ export class UserController {
         userId,
       }: { username: string; image: number; userId: string } = req.body;
 
+      //Check if username doesn't exist
+      const userExist = await prisma.user.findUnique({
+        where: { username },
+      });
+
+      if (userExist) {
+        res.status(400).json({ message: "Username already exists" });
+        return;
+      }
+
       const user: User = await prisma.user.update({
         where: { userId },
         data: {
@@ -63,6 +78,26 @@ export class UserController {
     }
   }
 
+  static async UpdateUserSettings(req: Request, res: Response): Promise<void> {
+    try {
+      const { avatar }: PatchUserSettings = req.body;
+      const { userId } = req.params;
+
+      const user: User = await prisma.user.update({
+        where: { userId },
+        data: {
+          avatar,
+        },
+      });
+
+      res
+        .status(200)
+        .json({ message: "User settings updated successfully", user });
+    } catch (error) {
+      console.error("Error updating user settings:", error);
+      res.status(500).json({ message: "Error updating user settings" });
+    }
+  }
   static async addFriend(req: Request, res: Response): Promise<void> {
     try {
       const {
@@ -80,8 +115,13 @@ export class UserController {
         return;
       }
 
+      if (user.userId === userId) {
+        res.status(400).json({ message: "You can't add yourself as a friend" });
+        return;
+      }
+
       // Add friend request
-      const friendRequest: FriendRequest = await prisma.friendRequest.create({
+      await prisma.friendRequest.create({
         data: {
           senderId: userId,
           receiverId: user.userId,
@@ -137,6 +177,39 @@ export class UserController {
     }
   }
 
+  static async refuseFriendRequest(req: Request, res: Response): Promise<void> {
+    try {
+      const { userId, senderId }: { userId: string; senderId: string } =
+        req.body;
+
+      // Find the friend request
+      const friendRequest: FriendRequest | null =
+        await prisma.friendRequest.findFirst({
+          where: {
+            senderId,
+            receiverId: userId,
+            status: "PENDING",
+          },
+        });
+
+      if (!friendRequest) {
+        res.status(404).json({ message: "Friend request not found" });
+        return;
+      }
+
+      // Accept the friend request
+      await prisma.friendRequest.update({
+        where: { id: friendRequest.id },
+        data: { status: "REJECTED" },
+      });
+
+      res.status(200).json({ message: "Friend request accepted" });
+    } catch (error) {
+      console.error("Error accepting friend request:", error);
+      res.status(500).json({ message: "Error accepting friend request" });
+    }
+  }
+
   static async getFriendsRequest(req: Request, res: Response): Promise<void> {
     try {
       const { userId } = req.params;
@@ -164,6 +237,35 @@ export class UserController {
     }
   }
 
+  static async getFriendInfo(req: Request, res: Response): Promise<void> {
+    try {
+      const { userId } = req.params;
+
+      const userInfo = await prisma.user.findUnique({
+        where: {
+          userId,
+        },
+        select: {
+          username: true,
+          avatar: true,
+          createdAt: true,
+          last_ping: true,
+        },
+      });
+
+      //Get nmber of friends
+      const friendsNumber = await prisma.friendship.count({
+        where: {
+          OR: [{ user1Id: userId }, { user2Id: userId }],
+        },
+      });
+
+      res.status(200).json({ ...userInfo, friendsNumber });
+    } catch (error) {
+      console.error("Error getting friends:", error);
+      res.status(500).json({ message: "Error getting friends" });
+    }
+  }
   static async getFriendsRequestNumber(
     req: Request,
     res: Response
@@ -275,7 +377,7 @@ export class UserController {
 
       res.status(200).json({
         data,
-        id: conversation.id,
+        ...conversation,
         lastMessageReadId: user?.lastReadMessageId,
       });
     } catch (error) {
@@ -337,7 +439,10 @@ export class UserController {
           chatId: conversation.id,
           name: user?.user.username,
           avatar: user?.user.avatar,
-          lastMessage: conversation.messages[0]?.content,
+          lastMessage:
+            conversation.messages[0]?.type === "TEXT"
+              ? conversation.messages[0]?.content
+              : "Send an image",
           lastMessageDate: conversation.messages[0]?.createdAt,
           unreadMessageCount: messageUnReadCount,
         };
@@ -349,6 +454,60 @@ export class UserController {
     } catch (error) {
       console.error("Error getting conversations:", error);
       res.status(500).json({ message: "Error getting conversations" });
+    }
+  }
+
+  static async getMessages(req: Request, res: Response): Promise<void> {
+    const { chatId } = req.params;
+    const page = parseInt(req.query.page as string) || 1;
+    const pageSize = parseInt(req.query.pageSize as string) || 100;
+
+    try {
+      const response = await getRoomMessages(chatId, page, pageSize);
+      res.json(response);
+    } catch (error) {
+      console.error(`Error in /chat/:chatId/messages: ${error}`);
+      res.status(500).json({ message: "Failed to fetch messages" });
+    }
+  }
+
+  static async updateChatSettings(req: Request, res: Response): Promise<void> {
+    try {
+      const { chatId } = req.params;
+      const { backgroundImage } = req.body;
+
+      const user = await prisma.conversation.update({
+        where: { id: chatId },
+        data: {
+          backgroundImage,
+        },
+      });
+
+      res.status(200).json({ message: "Settings updated successfully", user });
+    } catch (error) {
+      console.error("Error updating settings:", error);
+      res.status(500).json({ message: "Error updating settings" });
+    }
+  }
+
+  static async downloadImage(req: Request, res: Response): Promise<void> {
+    try {
+      const { url } = req.body;
+
+      //get the last part of url by /
+      const fileName = url.split("/").pop();
+      console.log("fileName", fileName);
+
+      if (!fileName) {
+        res.status(400).json({ message: "Invalid image url" });
+        return;
+      }
+      const signedUrl = await getSignedUrlImage(`uploads/${fileName}`);
+      console.log("signedUrl", signedUrl);
+      res.status(200).json({ url: signedUrl });
+    } catch (error) {
+      console.error("Error downloading image:", error);
+      res.status(500).json({ message: "Error downloading image" });
     }
   }
 }

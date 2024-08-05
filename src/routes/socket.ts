@@ -7,6 +7,7 @@ import {
   handleStopTyping,
   handleRefresh,
   handleCreateChat,
+  handleUploadImage,
 } from "../controllers/messageController";
 import { socketAuth } from "../middlewares/socketAuth";
 import { updateIsOnline, updateUserLastPing } from "../services/messageService";
@@ -26,6 +27,9 @@ export const setupSocket = (io: Server) => {
 
     socket.on("join_room", (data) => handleJoinRoom(socket, io, data));
     socket.on("send_message", (data) => handleSendMessage(io, data));
+    socket.on("upload_image", (data) => {
+      handleUploadImage(io, socket, data);
+    });
     socket.on("typing", (data) => handleTyping(io, socket, data));
     socket.on("stop_typing", (data) => handleStopTyping(io, socket, data));
     socket.on("refresh", (data) => handleRefresh(socket, data));

@@ -24,8 +24,7 @@ jobs:
 
       - name: Build and push Docker image
         run: |
-          docker build -t your_dockerhub_username/your_image_name:latest .
-          docker push your_dockerhub_username/your_image_name:latest
+          docker buildx build --platform linux/arm64/v8,linux/amd64 -t eliotatlani31/connectly-back:latest --push .
 
       - name: Set up Python
         uses: actions/setup-python@v2

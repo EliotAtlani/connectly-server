@@ -8,6 +8,8 @@ import {
   handleRefresh,
   handleCreateChat,
   handleUploadImage,
+  handleReactMessage,
+  handleRemoveReaction,
 } from "../controllers/messageController";
 import { socketAuth } from "../middlewares/socketAuth";
 import { updateIsOnline, updateUserLastPing } from "../services/messageService";
@@ -30,6 +32,8 @@ export const setupSocket = (io: Server) => {
     socket.on("upload_image", (data) => {
       handleUploadImage(io, socket, data);
     });
+    socket.on("react_message", (data) => handleReactMessage(io, data));
+    socket.on("remove_reaction", (data) => handleRemoveReaction(io, data));
     socket.on("typing", (data) => handleTyping(io, socket, data));
     socket.on("stop_typing", (data) => handleStopTyping(io, socket, data));
     socket.on("refresh", (data) => handleRefresh(socket, data));

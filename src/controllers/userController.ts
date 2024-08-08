@@ -496,18 +496,33 @@ export class UserController {
 
       //get the last part of url by /
       const fileName = url.split("/").pop();
-      console.log("fileName", fileName);
 
       if (!fileName) {
         res.status(400).json({ message: "Invalid image url" });
         return;
       }
       const signedUrl = await getSignedUrlImage(`uploads/${fileName}`);
-      console.log("signedUrl", signedUrl);
       res.status(200).json({ url: signedUrl });
     } catch (error) {
       console.error("Error downloading image:", error);
       res.status(500).json({ message: "Error downloading image" });
+    }
+  }
+  static async getAllMedia(req: Request, res: Response): Promise<void> {
+    try {
+      const { chatId } = req.params;
+
+      const messages = await prisma.message.findMany({
+        where: {
+          conversationId: chatId,
+          type: "IMAGE",
+        },
+      });
+
+      res.status(200).json(messages);
+    } catch (error) {
+      console.error("Error getting all media:", error);
+      res.status(500).json({ message: "Error getting all media" });
     }
   }
 }

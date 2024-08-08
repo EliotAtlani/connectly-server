@@ -24,6 +24,7 @@ model User {
 
   participatingIn ConversationUser[]
   sentMessages    Message[]          @relation("Sender")
+  reactions       Reaction[]
 }
 
 model Conversation {
@@ -56,13 +57,20 @@ model Message {
   id             String      @id @default(uuid())
   conversationId String
   senderId       String
+  senderName     String      @default("")
   content        String
   createdAt      DateTime    @default(now())
   type           MessageType @default(TEXT)
 
+  // Reply feature
+  replyToId String?
+  replyTo   Message?  @relation("Replies", fields: [replyToId], references: [id])
+  replies   Message[] @relation("Replies")
+
   conversation Conversation       @relation(fields: [conversationId], references: [id])
   sender       User               @relation("Sender", fields: [senderId], references: [userId])
   lastReadBy   ConversationUser[] @relation("LastReadMessage")
+  reactions    Reaction[]
 }
 
 enum MessageType {
@@ -93,6 +101,28 @@ model Friendship {
   user2 User @relation("User2", fields: [user2Id], references: [userId])
 
   @@unique([user1Id, user2Id])
+}
+
+model Reaction {
+  id        String       @id @default(uuid())
+  messageId String
+  userId    String
+  type      ReactionType
+  createdAt DateTime     @default(now())
+
+  message Message @relation(fields: [messageId], references: [id])
+  user    User    @relation(fields: [userId], references: [userId])
+
+  @@unique([messageId, userId, type])
+}
+
+enum ReactionType {
+  LIKE
+  LOVE
+  LAUGH
+  WOW
+  SAD
+  ANGRY
 }
 
 enum ConversationType {

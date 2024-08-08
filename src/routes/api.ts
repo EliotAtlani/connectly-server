@@ -4,6 +4,7 @@ import { validateDto } from "../middlewares/validateDto";
 import {
   AcceptFriendDto,
   AddFriendDto,
+  AddReactionToMessage,
   CreateUserDto,
   OnBoardUserDto,
   PatchChatSettings,
@@ -131,4 +132,6 @@ router.post(
   validateDto(PostDownloadImage),
   UserController.downloadImage
 );
+
+router.get("/medias/:chatId", checkJwt, UserController.getAllMedia);
 export default router;

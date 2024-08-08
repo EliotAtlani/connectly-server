@@ -1,3 +1,4 @@
+import { ReactionType } from "@prisma/client";
 import { prisma } from "../config/database";
 
 export const getRoomMessages = async (
@@ -11,6 +12,14 @@ export const getRoomMessages = async (
   // Fetch paginated messages
   const messages = await prisma.message.findMany({
     where: { conversationId: room },
+    include: {
+      replyTo: true,
+      reactions: {
+        include: {
+          user: true,
+        },
+      },
+    },
     orderBy: { createdAt: "desc" },
     take: pageSize,
     skip: skip,
@@ -32,14 +41,37 @@ export const getRoomMessages = async (
 };
 export const createMessage = async (
   from_user_id: string,
+  from_user_name: string,
   content: string,
   chatId: string,
+  replyMessageId?: string,
   type: "TEXT" | "IMAGE" = "TEXT"
 ) => {
+  if (replyMessageId) {
+    const replyMessage = await prisma.message.findUnique({
+      where: { id: replyMessageId },
+    });
+
+    if (!replyMessage) {
+      throw new Error("Reply message not found");
+    }
+
+    return await prisma.message.create({
+      data: {
+        conversationId: chatId,
+        senderId: from_user_id,
+        senderName: from_user_name,
+        content: content,
+        type: type,
+        replyToId: replyMessageId,
+      },
+    });
+  }
   return await prisma.message.create({
     data: {
       conversationId: chatId,
       senderId: from_user_id,
+      senderName: from_user_name,
       content: content,
       type: type,
     },
@@ -246,4 +278,59 @@ export const getOtherUser = async (chatId: string, from_user: string) => {
   } catch (error) {
     console.error(`Error in getOtherUser: ${error}`);
   }
+};
+
+export const createReaction = async (
+  userId: string,
+  messageId: string,
+  type: ReactionType
+) => {
+  const message = await prisma.message.findUnique({
+    where: { id: messageId },
+    include: {
+      reactions: true,
+    },
+  });
+
+  if (!message) {
+    throw new Error("Message not found");
+  }
+
+  const userReaction = message.reactions.find((r) => r.userId === userId);
+
+  if (userReaction) {
+    await prisma.reaction.delete({
+      where: { id: userReaction.id },
+    });
+  }
+
+  return await prisma.reaction.create({
+    data: {
+      userId,
+      messageId,
+      type,
+    },
+    include: {
+      user: true,
+    },
+  });
+};
+
+export const deleteReaction = async (userId: string, messageId: string) => {
+  const reaction = await prisma.reaction.findFirst({
+    where: {
+      userId,
+      messageId,
+    },
+  });
+
+  if (!reaction) {
+    throw new Error("Reaction not found");
+  }
+
+  await prisma.reaction.delete({
+    where: {
+      id: reaction.id,
+    },
+  });
 };

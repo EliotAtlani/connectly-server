@@ -52,3 +52,14 @@ export class PostDownloadImage {
   @IsString()
   url!: string;
 }
+
+export class AddReactionToMessage {
+  @IsString()
+  messageId!: string;
+
+  @IsString()
+  reaction!: string;
+
+  @IsString()
+  userId!: string;
+}

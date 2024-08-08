@@ -3,6 +3,8 @@ import { MessageProps } from "../types";
 import {
   createChat,
   createMessage,
+  createReaction,
+  deleteReaction,
   getActivityUser,
   getOtherUser,
   getRoomMessages,
@@ -10,6 +12,7 @@ import {
   RefreshConversation,
 } from "../services/messageService";
 import { uploadToS3 } from "../services/imgageUploadService";
+import { ReactionType } from "@prisma/client";
 
 export const handleJoinRoom = async (
   socket: Socket,
@@ -55,16 +58,33 @@ export const handleJoinRoom = async (
 };
 
 export const handleSendMessage = async (io: Server, data: MessageProps) => {
-  const { content, from_user_id, chatId } = data;
+  const {
+    content,
+    from_user_id,
+    from_username,
+    chatId,
+    replyMessageId,
+    replyTo,
+  } = data;
+
   try {
     const socketsInRoom = io.sockets.adapter.rooms.get(chatId) || new Set();
     const isOtherInRoom = socketsInRoom.size > 1;
-    const message = await createMessage(from_user_id, content, chatId);
+    const message = await createMessage(
+      from_user_id,
+      from_username,
+      content,
+      chatId,
+      replyMessageId
+    );
 
     io.in(chatId).emit("receive_message", {
       id: message.id,
       content,
       senderId: from_user_id,
+      senderName: from_username,
+      replyToId: replyMessageId,
+      replyTo: replyTo,
       createdAt: new Date().toISOString(),
       type: message.type,
       chatId: chatId,
@@ -86,6 +106,7 @@ export const handleSendMessage = async (io: Server, data: MessageProps) => {
       content,
       date: new Date().toISOString(),
       from_user_id,
+      from_username,
       is_other_in_room: isOtherInRoom,
       type: message.type,
     });
@@ -165,8 +186,7 @@ export const handleUploadImage = async (
   socket: Socket,
   data: MessageProps
 ) => {
-  console.log(data);
-  const { from_user_id, chatId, file } = data;
+  const { from_user_id, chatId, file, replyMessageId, from_username } = data;
 
   if (!file) {
     io.emit("error", { message: "No file found" });
@@ -182,9 +202,15 @@ export const handleUploadImage = async (
       .substring(7)}.jpg`;
 
     const url = await uploadToS3(file, fileName);
-    console.log(url);
 
-    const message = await createMessage(from_user_id, url, chatId, "IMAGE");
+    const message = await createMessage(
+      from_user_id,
+      from_username,
+      url,
+      chatId,
+      replyMessageId,
+      "IMAGE"
+    );
 
     socket.broadcast.to(chatId).emit("receive_message", {
       id: message.id,
@@ -217,5 +243,38 @@ export const handleUploadImage = async (
   } catch (error) {
     console.error(`Error in handleUploadImage: ${error}`);
     io.in(chatId).emit("error", { message: "Failed to send message" });
+  }
+};
+
+export const handleReactMessage = async (
+  io: Server,
+  data: { userId: string; messageId: string; type: ReactionType }
+) => {
+  try {
+    const { messageId, type, userId } = data;
+    const reaction = await createReaction(userId, messageId, type);
+    io.emit("receive_reaction", reaction);
+  } catch (error) {
+    console.error(`Error in handleReactMessage: ${error}`);
+    io.emit("error", { message: "Failed to react message" });
+  }
+};
+
+export const handleRemoveReaction = async (
+  io: Server,
+  data: { userId: string; messageId: string }
+) => {
+  try {
+    const { userId, messageId } = data;
+    await deleteReaction(userId, messageId);
+
+    io.emit("delete_reaction", {
+      messageId,
+      userId,
+      type: null,
+    });
+  } catch (error) {
+    console.error(`Error in handleRemoveReaction: ${error}`);
+    io.emit("error", { message: "Failed to remove reaction" });
   }
 };

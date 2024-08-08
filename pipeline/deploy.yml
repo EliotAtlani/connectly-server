@@ -8,10 +8,5 @@
         source: pull
         tag: latest
 
-    - name: Ensure Docker Compose is installed
-      apt:
-        name: docker compose
-        state: present
-
     - name: Bring up the Docker Compose services
       command: docker compose up --build -d

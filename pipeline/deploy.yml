@@ -10,8 +10,8 @@
 
     - name: Ensure Docker Compose is installed
       apt:
-        name: docker-compose
+        name: docker compose
         state: present
 
     - name: Bring up the Docker Compose services
-      command: docker-compose up --build -d
+      command: docker compose up --build -d

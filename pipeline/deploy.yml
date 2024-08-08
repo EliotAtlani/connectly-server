@@ -2,11 +2,15 @@
   become: yes
 
   tasks:
+    - name: Remove old Docker image
+      command: docker rmi eliotatlani31/connectly-back:latest || true
+
     - name: Pull the latest Docker image
       docker_image:
         name: eliotatlani31/connectly-back
         source: pull
         tag: latest
+        force_source: yes
 
     - name: Bring up the Docker Compose services
       command: docker compose up --build -d

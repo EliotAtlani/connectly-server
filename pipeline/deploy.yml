@@ -1,0 +1,17 @@
+- hosts: all
+  become: yes
+
+  tasks:
+    - name: Pull the latest Docker image
+      docker_image:
+        name: eliotatlani31/connectly-back
+        source: pull
+        tag: latest
+
+    - name: Ensure Docker Compose is installed
+      apt:
+        name: docker-compose
+        state: present
+
+    - name: Bring up the Docker Compose services
+      command: docker-compose up --build -d

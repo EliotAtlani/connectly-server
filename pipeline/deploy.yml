@@ -2,8 +2,12 @@
   become: yes
 
   tasks:
-    - name: Remove old Docker image
-      command: docker rmi eliotatlani31/connectly-back:latest || true
+    - name: Stop and remove existing containers
+      command: docker compose down
+
+    - name: Force remove old Docker image
+      command: docker rmi -f eliotatlani31/connectly-back:latest
+      ignore_errors: yes
 
     - name: Pull the latest Docker image
       docker_image:

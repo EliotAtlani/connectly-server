@@ -1,6 +1,7 @@
 import { Socket, Server } from "socket.io";
 import { MessageProps } from "../types";
 import {
+  addMemberToChat,
   createChat,
   createMessage,
   createReaction,
@@ -10,9 +11,11 @@ import {
   getRoomMessages,
   markMessageAsRead,
   RefreshConversation,
+  updateGroupImage,
+  updateGroupName,
 } from "../services/messageService";
 import { uploadToS3 } from "../services/imgageUploadService";
-import { ReactionType } from "@prisma/client";
+import { ReactionType, User } from "@prisma/client";
 
 export const handleJoinRoom = async (
   socket: Socket,
@@ -58,21 +61,13 @@ export const handleJoinRoom = async (
 };
 
 export const handleSendMessage = async (io: Server, data: MessageProps) => {
-  const {
-    content,
-    from_user_id,
-    from_username,
-    chatId,
-    replyMessageId,
-    replyTo,
-  } = data;
+  const { content, from_user_id, chatId, replyMessageId, replyTo } = data;
 
   try {
     const socketsInRoom = io.sockets.adapter.rooms.get(chatId) || new Set();
     const isOtherInRoom = socketsInRoom.size > 1;
     const message = await createMessage(
       from_user_id,
-      from_username,
       content,
       chatId,
       replyMessageId
@@ -82,7 +77,7 @@ export const handleSendMessage = async (io: Server, data: MessageProps) => {
       id: message.id,
       content,
       senderId: from_user_id,
-      senderName: from_username,
+      sender: message.sender,
       replyToId: replyMessageId,
       replyTo: replyTo,
       createdAt: new Date().toISOString(),
@@ -103,10 +98,10 @@ export const handleSendMessage = async (io: Server, data: MessageProps) => {
 
     io.emit("refresh_conversation", {
       chatId,
-      content,
+      content: message,
       date: new Date().toISOString(),
       from_user_id,
-      from_username,
+      sender: message.sender,
       is_other_in_room: isOtherInRoom,
       type: message.type,
     });
@@ -147,6 +142,7 @@ export const handleStopTyping = (
     io.emit("user_stop_typing_conv", {
       chatId: data.chatId,
       userId: data.userId,
+      username: data.username,
     });
   } catch (error) {
     console.error(`Error in handleStopTyping: ${error}`);
@@ -170,11 +166,33 @@ export const handleRefresh = async (
 
 export const handleCreateChat = async (
   socket: Socket,
-  data: { usersId: string[] }
+  io: Server,
+  data: { usersId: string[]; creator: User; groupName?: string }
 ) => {
   try {
     const chat = await createChat(data);
+
+    //First message
+    const message = await createMessage(
+      data.creator.userId,
+      `${data.creator.username} created the ${
+        data.usersId.length > 2 ? "group" : "chat"
+      }`,
+      chat.id,
+      undefined,
+      "SYSTEM"
+    );
     socket.emit("chat_created", chat);
+    io.emit("add_conversation", {
+      chatId: chat.id,
+      content: message,
+      date: new Date().toISOString(),
+      from_user_id: message.senderId,
+      sender: message.sender,
+      is_other_in_room: true,
+      type: chat.type,
+      name: data.groupName,
+    });
   } catch (error) {
     console.error(`Error in handleCreateChat: ${error}`);
     socket.emit("error", { message: "Failed to create chat" });
@@ -186,7 +204,7 @@ export const handleUploadImage = async (
   socket: Socket,
   data: MessageProps
 ) => {
-  const { from_user_id, chatId, file, replyMessageId, from_username } = data;
+  const { from_user_id, chatId, file, replyMessageId } = data;
 
   if (!file) {
     io.emit("error", { message: "No file found" });
@@ -205,7 +223,6 @@ export const handleUploadImage = async (
 
     const message = await createMessage(
       from_user_id,
-      from_username,
       url,
       chatId,
       replyMessageId,
@@ -217,6 +234,7 @@ export const handleUploadImage = async (
       content: url,
       type: message.type,
       senderId: from_user_id,
+      sender: message.sender,
       createdAt: new Date().toISOString(),
       chatId: chatId,
     });
@@ -232,11 +250,14 @@ export const handleUploadImage = async (
       }
     }
 
+    console.log("refreshing conversation", message.sender);
+
     io.emit("refresh_conversation", {
       chatId,
-      content: "Send an image",
+      content: message,
       date: new Date().toISOString(),
       from_user_id,
+      sender: message.sender,
       is_other_in_room: isOtherInRoom,
     });
     await RefreshConversation(chatId);
@@ -276,5 +297,152 @@ export const handleRemoveReaction = async (
   } catch (error) {
     console.error(`Error in handleRemoveReaction: ${error}`);
     io.emit("error", { message: "Failed to remove reaction" });
+  }
+};
+
+export const handleChangeGroupName = async (
+  io: Server,
+  socket: Socket,
+  data: { chatId: string; name: string; user: User }
+) => {
+  try {
+    const { chatId, name, user } = data;
+
+    await updateGroupName(chatId, name);
+
+    const message = await createMessage(
+      user.userId,
+      `${user.username} changed groupname to ${name}`,
+      chatId,
+      undefined,
+      "SYSTEM"
+    );
+
+    io.in(chatId).emit("receive_message", {
+      id: message.id,
+      content: message.content,
+      senderId: message.senderId,
+      sender: message.sender,
+      createdAt: new Date().toISOString(),
+      type: message.type,
+      chatId: chatId,
+    });
+
+    io.emit("refresh_conversation", {
+      chatId,
+      content: message,
+      date: new Date().toISOString(),
+      from_user_id: user.userId,
+      sender: message.sender,
+      is_other_in_room: true,
+      type: message.type,
+      name,
+    });
+
+    socket.emit("refresh_header", {
+      chatId,
+      name,
+    });
+  } catch (error) {
+    console.error(`Error in handleChangeGroupName: ${error}`);
+    io.emit("error", { message: "Failed to change group name" });
+  }
+};
+
+export const handleChangeGroupImage = async (
+  io: Server,
+  socket: Socket,
+  data: { chatId: string; image: Buffer; user: User }
+) => {
+  try {
+    const { chatId, image, user } = data;
+
+    // Generate a unique file name
+    const fileName = `group-cover/${Date.now()}-${Math.random()
+      .toString(36)
+      .substring(7)}.jpg`;
+
+    const url = await uploadToS3(image, fileName);
+
+    await updateGroupImage(chatId, url);
+
+    const message = await createMessage(
+      user.userId,
+      `${user.username} changed group image`,
+      chatId,
+      undefined,
+      "SYSTEM"
+    );
+
+    io.in(chatId).emit("receive_message", {
+      id: message.id,
+      content: message.content,
+      senderId: message.senderId,
+      sender: message.sender,
+      createdAt: new Date().toISOString(),
+      type: message.type,
+      chatId: chatId,
+    });
+
+    io.emit("refresh_conversation", {
+      chatId,
+      content: message,
+      date: new Date().toISOString(),
+      from_user_id: user.userId,
+      avatar: url,
+      sender: message.sender,
+      is_other_in_room: true,
+      type: message.type,
+    });
+    socket.emit("refresh_header", {
+      chatId,
+      image: url,
+    });
+  } catch (error) {
+    console.error(`Error in changeGroupImage: ${error}`);
+    io.emit("error", { message: "Failed to change group image" });
+  }
+};
+
+export const handleAddMember = async (
+  io: Server,
+  socket: Socket,
+  data: { chatId: string; user: User; userAdded: User }
+) => {
+  try {
+    const { chatId, userAdded, user } = data;
+
+    await addMemberToChat(chatId, userAdded.userId);
+
+    const message = await createMessage(
+      user.userId,
+      `${user.username} added ${userAdded.username} the group`,
+      chatId,
+      undefined,
+      "SYSTEM"
+    );
+
+    io.in(chatId).emit("receive_message", {
+      id: message.id,
+      content: message.content,
+      senderId: message.senderId,
+      sender: message.sender,
+      createdAt: new Date().toISOString(),
+      type: message.type,
+      chatId: chatId,
+    });
+
+    io.emit("refresh_conversation", {
+      chatId,
+      content: message,
+      date: new Date().toISOString(),
+      from_user_id: user.userId,
+      sender: message.sender,
+      is_other_in_room: true,
+      type: message.type,
+    });
+  } catch (error) {
+    console.error(`Error in handleAddMember: ${error}`);
+    io.emit("error", { message: "Failed to add member" });
   }
 };

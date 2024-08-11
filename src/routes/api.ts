@@ -88,6 +88,11 @@ router.get(
 );
 
 router.get(
+  "/users/friends-list/:userId/chat/:chatId",
+  checkJwt,
+  UserController.getFriendsListNotInChat
+);
+router.get(
   "/users/friends-request-number/:userId",
   UserController.getFriendsRequestNumber
 );
@@ -123,6 +128,7 @@ router.patch(
   UserController.updateChatSettings
 );
 
+router.get("/chat-users/:chatId", checkJwt, UserController.getUsersChat);
 ///////////////////
 //DOWNLOAD FILES///
 ///////////////////

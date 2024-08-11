@@ -13,7 +13,12 @@ export const getRoomMessages = async (
   const messages = await prisma.message.findMany({
     where: { conversationId: room },
     include: {
-      replyTo: true,
+      sender: true,
+      replyTo: {
+        include: {
+          sender: true,
+        },
+      },
       reactions: {
         include: {
           user: true,
@@ -41,11 +46,10 @@ export const getRoomMessages = async (
 };
 export const createMessage = async (
   from_user_id: string,
-  from_user_name: string,
   content: string,
   chatId: string,
   replyMessageId?: string,
-  type: "TEXT" | "IMAGE" = "TEXT"
+  type: "TEXT" | "IMAGE" | "SYSTEM" = "TEXT"
 ) => {
   if (replyMessageId) {
     const replyMessage = await prisma.message.findUnique({
@@ -60,10 +64,12 @@ export const createMessage = async (
       data: {
         conversationId: chatId,
         senderId: from_user_id,
-        senderName: from_user_name,
         content: content,
         type: type,
         replyToId: replyMessageId,
+      },
+      include: {
+        sender: true,
       },
     });
   }
@@ -71,9 +77,11 @@ export const createMessage = async (
     data: {
       conversationId: chatId,
       senderId: from_user_id,
-      senderName: from_user_name,
       content: content,
       type: type,
+    },
+    include: {
+      sender: true,
     },
   });
 };
@@ -84,56 +92,78 @@ export const RefreshConversation = async (room: string) => {
     data: { updatedAt: new Date() },
   });
 };
-export const createChat = async (data: { usersId: string[] }) => {
+export const createChat = async (data: {
+  usersId: string[];
+  groupName?: string;
+}) => {
   if (data.usersId.length < 2) {
     throw new Error("Invalid number of users");
   }
 
   if (data.usersId.length > 2) {
-    throw new Error("Group chat not supported yet");
-  }
-  // Check if chat already exists
-  const existingConversation = await prisma.conversation.findFirst({
-    where: {
-      AND: [
-        { type: "PRIVATE" },
-        {
-          participants: {
-            every: {
-              userId: { in: data.usersId },
+    const conversation = await prisma.conversation.create({
+      data: {
+        type: "GROUP",
+        name: data.groupName,
+      },
+    });
+
+    await Promise.all(
+      data.usersId.map(async (userId) => {
+        await prisma.conversationUser.create({
+          data: {
+            conversationId: conversation.id,
+            userId,
+          },
+        });
+      })
+    );
+
+    return conversation;
+  } else {
+    // Check if chat already exists
+    const existingConversation = await prisma.conversation.findFirst({
+      where: {
+        AND: [
+          { type: "PRIVATE" },
+          {
+            participants: {
+              every: {
+                userId: { in: data.usersId },
+              },
             },
           },
-        },
-        { participants: { some: { userId: data.usersId[0] } } },
-        { participants: { some: { userId: data.usersId[1] } } },
-      ],
-    },
-    include: {
-      participants: true,
-    },
-  });
+          { participants: { some: { userId: data.usersId[0] } } },
+          { participants: { some: { userId: data.usersId[1] } } },
+        ],
+      },
+      include: {
+        participants: true,
+      },
+    });
 
-  if (existingConversation) {
-    return existingConversation;
+    if (existingConversation) {
+      return existingConversation;
+    }
+    const conversation = await prisma.conversation.create({
+      data: {
+        type: "PRIVATE",
+      },
+    });
+
+    await Promise.all(
+      data.usersId.map(async (userId) => {
+        await prisma.conversationUser.create({
+          data: {
+            conversationId: conversation.id,
+            userId,
+          },
+        });
+      })
+    );
+
+    return conversation;
   }
-  const conversation = await prisma.conversation.create({
-    data: {
-      type: "PRIVATE",
-    },
-  });
-
-  await Promise.all(
-    data.usersId.map(async (userId) => {
-      await prisma.conversationUser.create({
-        data: {
-          conversationId: conversation.id,
-          userId,
-        },
-      });
-    })
-  );
-
-  return conversation;
 };
 
 export async function markMessageAsRead(userId: string, messageId: string) {
@@ -331,6 +361,40 @@ export const deleteReaction = async (userId: string, messageId: string) => {
   await prisma.reaction.delete({
     where: {
       id: reaction.id,
+    },
+  });
+};
+
+export const updateGroupName = async (chatId: string, name: string) => {
+  await prisma.conversation.update({
+    where: { id: chatId },
+    data: { name },
+  });
+};
+
+export const updateGroupImage = async (chatId: string, image: string) => {
+  await prisma.conversation.update({
+    where: { id: chatId },
+    data: { image },
+  });
+};
+
+export const addMemberToChat = async (chatId: string, userId: string) => {
+  //Verified if user is already in the chat
+  const conversationUser = await prisma.conversationUser.findFirst({
+    where: {
+      conversationId: chatId,
+      userId,
+    },
+  });
+
+  if (conversationUser) {
+    throw new Error("User is already in the chat");
+  }
+  await prisma.conversationUser.create({
+    data: {
+      conversationId: chatId,
+      userId,
     },
   });
 };

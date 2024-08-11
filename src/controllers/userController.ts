@@ -337,6 +337,80 @@ export class UserController {
     }
   }
 
+  static async getFriendsListNotInChat(
+    req: Request,
+    res: Response
+  ): Promise<void> {
+    try {
+      const { userId, chatId } = req.params;
+
+      const members = await prisma.conversation.findUnique({
+        where: {
+          id: chatId,
+        },
+        include: {
+          participants: {
+            select: {
+              userId: true,
+            },
+          },
+        },
+      });
+
+      const friends = await prisma.friendship.findMany({
+        where: {
+          OR: [{ user1Id: userId }, { user2Id: userId }],
+        },
+        include: {
+          user1: {
+            select: {
+              username: true,
+              avatar: true,
+            },
+          },
+          user2: {
+            select: {
+              username: true,
+              avatar: true,
+            },
+          },
+        },
+      });
+
+      //Remove the userId from the friend object
+      const friendsList = friends.map((friend) => {
+        if (friend.user1Id === userId) {
+          return {
+            userId: friend.user2Id,
+            username: friend.user2.username,
+            avatar: friend.user2.avatar,
+            createdAt: friend.createdAt,
+          };
+        } else {
+          return {
+            userId: friend.user1Id,
+            username: friend.user1.username,
+            avatar: friend.user1.avatar,
+            createdAt: friend.createdAt,
+          };
+        }
+      });
+
+      //Filter the friends which are not in the chat
+      const friendsListNotInChat = friendsList.filter(
+        (friend) =>
+          !members?.participants.some(
+            (participant) => participant.userId === friend.userId
+          )
+      );
+
+      res.status(200).json(friendsListNotInChat);
+    } catch (error) {
+      console.error("Error getting friends:", error);
+      res.status(500).json({ message: "Error getting friends" });
+    }
+  }
+
   static async getChat(req: Request, res: Response): Promise<void> {
     try {
       const { chatId, userId } = req.params;
@@ -415,6 +489,9 @@ export class UserController {
               createdAt: "desc",
             },
             take: 1,
+            include: {
+              sender: true,
+            },
           },
         },
         orderBy: {
@@ -437,14 +514,19 @@ export class UserController {
 
         const data = {
           chatId: conversation.id,
-          name: user?.user.username,
-          avatar: user?.user.avatar,
-          lastMessage:
-            conversation.messages[0]?.type === "TEXT"
-              ? conversation.messages[0]?.content
-              : "Send an image",
+          name:
+            conversation.type === "PRIVATE"
+              ? user?.user.username
+              : conversation.name,
+          avatar:
+            conversation.type === "PRIVATE"
+              ? user?.user.avatar
+              : conversation.image,
+          lastMessage: conversation.messages[0],
           lastMessageDate: conversation.messages[0]?.createdAt,
           unreadMessageCount: messageUnReadCount,
+          isTyping: [],
+          type: conversation.type,
         };
 
         finalArray.push(data);
@@ -523,6 +605,47 @@ export class UserController {
     } catch (error) {
       console.error("Error getting all media:", error);
       res.status(500).json({ message: "Error getting all media" });
+    }
+  }
+
+  static async getUsersChat(req: Request, res: Response): Promise<void> {
+    try {
+      const { chatId } = req.params;
+
+      const conversation = await prisma.conversation.findUnique({
+        where: {
+          id: chatId,
+        },
+        include: {
+          participants: {
+            include: {
+              user: {
+                select: {
+                  userId: true,
+                  username: true,
+                  avatar: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      const arrayFinal = [];
+
+      if (!conversation || conversation.participants.length === 0) {
+        res.status(404).json({ message: "Conversation not found" });
+        return;
+      }
+
+      for (const participant of conversation?.participants) {
+        arrayFinal.push(participant.user);
+      }
+
+      res.status(200).json(arrayFinal);
+    } catch (error) {
+      console.error("Error getting conversations:", error);
+      res.status(500).json({ message: "Error getting conversations" });
     }
   }
 }

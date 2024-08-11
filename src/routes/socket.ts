@@ -10,6 +10,9 @@ import {
   handleUploadImage,
   handleReactMessage,
   handleRemoveReaction,
+  handleChangeGroupName,
+  handleChangeGroupImage,
+  handleAddMember,
 } from "../controllers/messageController";
 import { socketAuth } from "../middlewares/socketAuth";
 import { updateIsOnline, updateUserLastPing } from "../services/messageService";
@@ -24,7 +27,7 @@ export const setupSocket = (io: Server) => {
 
     updateIsOnline(userId, true);
     socket.on("create_chat", (data) => {
-      handleCreateChat(socket, data);
+      handleCreateChat(socket, io, data);
     });
 
     socket.on("join_room", (data) => handleJoinRoom(socket, io, data));
@@ -37,7 +40,16 @@ export const setupSocket = (io: Server) => {
     socket.on("typing", (data) => handleTyping(io, socket, data));
     socket.on("stop_typing", (data) => handleStopTyping(io, socket, data));
     socket.on("refresh", (data) => handleRefresh(socket, data));
+    socket.on("changeGroupName", (data) => {
+      handleChangeGroupName(io, socket, data);
+    });
+    socket.on("changeGroupImage", (data) => {
+      handleChangeGroupImage(io, socket, data);
+    });
 
+    socket.on("add_member", (data) => {
+      handleAddMember(io, socket, data);
+    });
     socket.on("leave_room", (data) => {
       socket.leave(data.room);
       console.log(`User ${data.from_user} left room ${data.room}`);

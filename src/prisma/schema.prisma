@@ -31,6 +31,7 @@ model Conversation {
   id              String           @id @default(uuid())
   name            String? // Optional name for group conversations
   type            ConversationType @default(PRIVATE)
+  image           String?
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
   backgroundImage Int              @default(0)
@@ -56,8 +57,7 @@ model ConversationUser {
 model Message {
   id             String      @id @default(uuid())
   conversationId String
-  senderId       String
-  senderName     String      @default("")
+  senderId       String? // Make this optional
   content        String
   createdAt      DateTime    @default(now())
   type           MessageType @default(TEXT)
@@ -68,14 +68,18 @@ model Message {
   replies   Message[] @relation("Replies")
 
   conversation Conversation       @relation(fields: [conversationId], references: [id])
-  sender       User               @relation("Sender", fields: [senderId], references: [userId])
+  sender       User?              @relation("Sender", fields: [senderId], references: [userId])
   lastReadBy   ConversationUser[] @relation("LastReadMessage")
   reactions    Reaction[]
+
+  // Optional field for system messages
+  @@index([senderId])
 }
 
 enum MessageType {
   TEXT
   IMAGE
+  SYSTEM
 }
 
 model FriendRequest {

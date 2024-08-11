@@ -117,6 +117,17 @@ router.get(
   UserController.getMessages
 );
 
+router.post(
+  "/chat-conversations/pin/:userId/:chatId",
+  checkJwt,
+  UserController.pinConversation
+);
+
+router.post(
+  "/chat-conversations/unpin/:userId/:chatId",
+  checkJwt,
+  UserController.unpinConversation
+);
 /////////////////
 //SETTINGS CHAT//
 /////////////////

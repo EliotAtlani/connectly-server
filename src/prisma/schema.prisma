@@ -46,6 +46,7 @@ model ConversationUser {
   conversationId    String
   joinedAt          DateTime @default(now())
   lastReadMessageId String?
+  pinned            Boolean  @default(false)
 
   user            User         @relation(fields: [userId], references: [userId])
   conversation    Conversation @relation(fields: [conversationId], references: [id])

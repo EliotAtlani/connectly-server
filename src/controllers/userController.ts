@@ -507,6 +507,14 @@ export class UserController {
           (participant) => participant.userId !== userId
         );
 
+        const trueUser = conversation.participants.find(
+          (participant) => participant.userId == userId
+        );
+
+        if (user?.conversationId === "3e00c51f-6157-4041-ba2e-c16869262ed8") {
+          console.log(user, user?.conversationId);
+        }
+
         const messageUnReadCount = await getUnreadMessageCount(
           userId,
           conversation.id
@@ -514,6 +522,7 @@ export class UserController {
 
         const data = {
           chatId: conversation.id,
+          pinned: trueUser?.pinned,
           name:
             conversation.type === "PRIVATE"
               ? user?.user.username
@@ -531,6 +540,16 @@ export class UserController {
 
         finalArray.push(data);
       }
+
+      // Sort the array by pinned status (pinned first) and then by lastMessageDate
+      finalArray.sort((a, b) => {
+        if (a.pinned && !b.pinned) return -1;
+        if (!a.pinned && b.pinned) return 1;
+        return (
+          new Date(b.lastMessageDate).getTime() -
+          new Date(a.lastMessageDate).getTime()
+        );
+      });
 
       res.status(200).json(finalArray);
     } catch (error) {
@@ -646,6 +665,90 @@ export class UserController {
     } catch (error) {
       console.error("Error getting conversations:", error);
       res.status(500).json({ message: "Error getting conversations" });
+    }
+  }
+
+  static async pinConversation(req: Request, res: Response): Promise<void> {
+    try {
+      const { chatId, userId } = req.params;
+
+      const conversation = await prisma.conversation.findUnique({
+        where: { id: chatId },
+        include: {
+          participants: {
+            where: {
+              userId,
+            },
+          },
+        },
+      });
+
+      //Find participant
+      if (!conversation) {
+        res.status(404).json({ message: "Conversation not found" });
+        return;
+      }
+
+      //Find user
+      const userConversation = conversation.participants.find(
+        (conv) => conv.userId === userId
+      );
+
+      await prisma.conversationUser.update({
+        where: { id: userConversation?.id },
+        data: {
+          pinned: true,
+        },
+      });
+
+      res
+        .status(200)
+        .json({ message: "Conversation pinned successfully", conversation });
+    } catch (error) {
+      console.error("Error pinning conversation:", error);
+      res.status(500).json({ message: "Error pinning conversation" });
+    }
+  }
+
+  static async unpinConversation(req: Request, res: Response): Promise<void> {
+    try {
+      const { chatId, userId } = req.params;
+
+      const conversation = await prisma.conversation.findUnique({
+        where: { id: chatId },
+        include: {
+          participants: {
+            where: {
+              userId,
+            },
+          },
+        },
+      });
+
+      //Find participant
+      if (!conversation) {
+        res.status(404).json({ message: "Conversation not found" });
+        return;
+      }
+
+      //Find user
+      const userConversation = conversation.participants.find(
+        (conv) => conv.userId === userId
+      );
+
+      await prisma.conversationUser.update({
+        where: { id: userConversation?.id },
+        data: {
+          pinned: false,
+        },
+      });
+
+      res
+        .status(200)
+        .json({ message: "Conversation pinned successfully", conversation });
+    } catch (error) {
+      console.error("Error pinning conversation:", error);
+      res.status(500).json({ message: "Error pinning conversation" });
     }
   }
 }
